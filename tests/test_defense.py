@@ -41,6 +41,24 @@ def test_gate_allows_public_reference_table():
     assert defense.gate_sql("SELECT name, main_phone FROM facilities WHERE facility_code = 'MAIN'")
 
 
+def test_gate_blocks_encounters_linkage_dump():
+    # Clinical-by-inference: patient_id + visit type/dates, no PII column named,
+    # but every row is attributable to one patient -> must be scoped.
+    d = defense.gate_sql(
+        "SELECT patient_id, encounter_type, encounter_class, start_datetime FROM encounters LIMIT 25")
+    assert not d.allow
+    assert any("linkage" in r for r in d.reasons)
+
+
+def test_gate_allows_scoped_single_patient_history():
+    assert defense.gate_sql(
+        "SELECT encounter_type, start_datetime FROM encounters WHERE patient_id = 42 LIMIT 20")
+
+
+def test_gate_allows_non_person_reference_without_linkage():
+    assert defense.gate_sql("SELECT department_name, specialty FROM departments")
+
+
 def test_gate_enforces_scope_when_joining_person_table():
     # Touching patients re-arms the scoping rule even alongside a reference table.
     d = defense.gate_sql("SELECT p.first_name, f.name FROM patients p JOIN facilities f "

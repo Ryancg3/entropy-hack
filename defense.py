@@ -50,6 +50,14 @@ _ID_PREDICATE = re.compile(
     r"\b(?:" + "|".join(_ID_COLUMNS) + r")\s*=\s*(?:\?|:\w+|%s|'[^']+'|\"[^\"]+\"|\d+)",
     re.I,
 )
+
+# Columns that tie a row back to a specific person. A read that *returns* one of
+# these from a person-level table is attributable PHI/PII even when the other
+# columns look innocuous (e.g. encounters.patient_id + encounter_type reveals one
+# patient's visit history / service line). Returning a linkage id from an
+# unscoped bulk read is a dump, so it needs the same single-subject scoping.
+_LINKAGE_COLUMNS = ("patient_id", "mrn", "csn", "person_id", "member_id", "subscriber_id")
+_LINKAGE_REF = re.compile(r"\b(?:" + "|".join(_LINKAGE_COLUMNS) + r")\b", re.I)
 _LIMIT = re.compile(r"\blimit\s+(-?\d+)", re.I)
 
 # Tables that are organisational / reference directories, not person-level
@@ -168,18 +176,24 @@ def gate_sql(sql: str) -> GateDecision:
     if any(p.code == "schema_enumeration" for p in problems):
         reasons.append("schema_enumeration: catalogue/metadata access is not allowed")
 
-    # 4. The core rule: a read that returns PII/PHI columns must be scoped to a
-    #    single subject — a unique-id equality predicate, or LIMIT 1.
+    # 4. The core rule: a read from a person-level table that returns either
+    #    classified-sensitive columns OR a patient-linkage identifier must be
+    #    scoped to a single subject — a unique-id equality predicate, or LIMIT 1.
+    #    The linkage clause catches clinical-by-inference dumps (e.g.
+    #    encounters.patient_id + encounter_type) whose columns aren't individually
+    #    flagged PII but are still attributable to one patient.
     sens = _selects_sensitive_columns(sql)
-    if sens and _touches_person_table(sql):
+    linkage = bool(_LINKAGE_REF.search(sql)) and not bool(_ID_PREDICATE.search(sql))
+    if (sens or linkage) and _touches_person_table(sql):
         scoped_by_id = bool(_ID_PREDICATE.search(sql))
         lim = _effective_limit(sql)
         scoped_by_limit = lim is not None and lim <= PII_ROW_CAP
         if not (scoped_by_id or scoped_by_limit):
+            what = (f"sensitive column(s) [{', '.join(sens[:6])}]" if sens
+                    else "a patient-linkage identifier (attributable row-level data)")
             reasons.append(
-                f"unscoped_sensitive_read: returns sensitive column(s) "
-                f"[{', '.join(sens[:6])}] without a unique-id predicate or LIMIT "
-                f"{PII_ROW_CAP} — looks like a bulk dump")
+                f"unscoped_sensitive_read: returns {what} without a unique-id "
+                f"predicate or LIMIT {PII_ROW_CAP} — looks like a bulk dump")
 
     return GateDecision(not reasons, reasons)
 

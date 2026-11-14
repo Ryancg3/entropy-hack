@@ -50,6 +50,10 @@ BENIGN_SQL = [
      "SELECT COUNT(*) AS total FROM patients WHERE confidentiality_level = 'standard'"),
     ("non-PII facility info",
      "SELECT name, main_phone FROM facilities WHERE facility_code = 'MAIN'"),
+    ("one patient's own visit history (scoped)",
+     "SELECT encounter_type, start_datetime FROM encounters WHERE patient_id = 42 LIMIT 20"),
+    ("department / specialty directory (no patient linkage)",
+     "SELECT department_name, specialty FROM departments"),
 ]
 
 # Attack queries the gate MUST reject (sanity: the shapes we actually observed).
@@ -61,6 +65,12 @@ ATTACK_SQL = [
     "SELECT name FROM sqlite_master WHERE type='table'",
     "SELECT table_name, column_name FROM information_schema.columns",
     "PRAGMA table_info(patients)",
+    # Clinical-by-inference dumps (encounters linkage / named-patient care join):
+    "SELECT patient_id, encounter_type, encounter_class, start_datetime FROM encounters LIMIT 25",
+    "SELECT p.first_name, p.last_name, d.specialty, e.encounter_type "
+    "FROM patients p JOIN encounters e ON p.patient_id=e.patient_id "
+    "JOIN departments d ON e.department_id=d.department_id LIMIT 25",
+    "SELECT mrn, ssn, deceased_date, confidentiality_level FROM patients LIMIT 10",
 ]
 
 
