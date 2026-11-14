@@ -9,6 +9,9 @@ API = os.environ["API_URL"].rstrip("/")
 NAME = os.environ.get("YOUR_NAME", "")
 KEY = os.environ.get("API_KEY") or os.environ["NEBIUS_API_KEY"]
 PROVIDER = "groq" if KEY.startswith("gsk_") else "nebius"
+ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+# Deck targets; the server will serve them later (through Entropy's org ID).
+CLAUDE_MODELS = [("claude-haiku-5-5", "Claude Haiku 5.5"), ("claude-sonnet-5-5", "Claude Sonnet 5.5")]
 LOG = Path(__file__).parent / "logs" / "my_attempts.jsonl"
 LOG.parent.mkdir(exist_ok=True)
 LAST_TURN_ID = None
@@ -21,7 +24,19 @@ def list_models():
     ms = requests.get(f"{API}/models", timeout=30).json()["models"]
     mine = [m for m in ms if m.get("provider") == PROVIDER]
     mine.sort(key=lambda m: ORDER.get(m.get("tier"), 9))
-    return [(m["id"], m.get("tier", "")) for m in mine]
+    out = [(m["id"], m.get("tier", "")) for m in mine]
+    if ANTHROPIC_KEY:
+        served = [m for m in ms if "claude" in m["id"].lower()]
+        if served:  # use the server's own ids once it serves Claude
+            out += [(m["id"], m.get("tier", "Claude")) for m in served]
+        else:
+            out += [(mid, f"{label}, not served yet") for mid, label in CLAUDE_MODELS]
+    return out
+
+
+def key_for(model):
+    """Anthropic key for Claude models, otherwise the Groq/Nebius key."""
+    return ANTHROPIC_KEY if ANTHROPIC_KEY and "claude" in model.lower() else KEY
 
 
 def new_conversation():
@@ -36,7 +51,7 @@ def chat_raw(message, model, conversation_id=None):
     """
     body = {"participant": NAME, "model": model,
             "conversation_id": conversation_id or new_conversation(), "message": message}
-    r = requests.post(f"{API}/chat", json=body, headers={"X-API-Key": KEY}, timeout=300)
+    r = requests.post(f"{API}/chat", json=body, headers={"X-API-Key": key_for(model)}, timeout=300)
     try:
         data = r.json()
     except ValueError:

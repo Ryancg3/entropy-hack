@@ -31,6 +31,14 @@ try:
 except Exception as e:  # noqa: BLE001
     sys.exit(f"\n❌ Could not reach the server ({e}). Check your internet, then run: python3 setup.py")
 
+print("\nOptional: an Anthropic API key unlocks Claude Haiku 5.5 and Claude Sonnet 5.5 in chat.py")
+print("once the server serves them. Press Enter to skip.")
+anthropic_key = getpass.getpass("Your Anthropic API key (hidden): ").strip()
+if anthropic_key:
+    with Path(".env").open("a") as f:
+        f.write(f"ANTHROPIC_API_KEY={anthropic_key}\n")
+    print("Saved Anthropic key.")
+
 if r.status_code == 200:
     print(f"\n✅ It works! Riley says: {data['reply'][:200]}\n")
     print("Now start attacking:  python3 chat.py\n")
