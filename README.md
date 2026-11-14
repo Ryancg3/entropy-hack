@@ -13,6 +13,12 @@ boundary — no second model, same input → same output.
 > Full reproducible write-up, with every transcript and `turn_id`:
 > **[docs/vulnerabilities.md](docs/vulnerabilities.md)**.
 
+**At a glance**
+
+- 🔓 **3 findings**, measured across 4 models — bulk PII dump, clinical/scope bypass, and a contact-takeover chain that reaches a live `UPDATE`.
+- 🤖 **Autonomous red-team** — a local LLM on metacon attacks Riley turn-after-turn, scored by our own gate.
+- 🛡️ **One deterministic fix** — `defense.py` takes **17 leaks → 0** with **0 false-positives**, no second model.
+
 ---
 
 ## What we broke (measured, not one-off)
@@ -63,14 +69,19 @@ chat — demographics, contacts, insurance member IDs, provider records:
 
 ## Automated red-team — a local LLM attacking Riley
 
-Beyond hand-written prompts, we built **`qwen_attacker.py`**: a local **Qwen** model
-running on **metacon** (our homelab box), reached over **Tailscale** through a
-**LiteLLM** gateway, that drives Riley **autonomously, turn after turn**. The attacker
-role-plays an authorised researcher, **reads each Riley reply — including the tool
-calls / SQL Riley made — and adapts its next message**, pressing for the fake hospital
-data across N turns. Crucially, **every turn is scored by our own deterministic
-`defense.defend_response` gate**, so *"did Riley leak?"* is a rule, not a vibe — and
-each turn is logged with its `turn_id` for submission.
+Beyond hand-written prompts, we built **[`qwen_attacker.py`](qwen_attacker.py)**: a
+local **Qwen** model running on **metacon** (our homelab box), reached over
+**Tailscale** through a **LiteLLM** gateway, that drives Riley **autonomously, turn
+after turn**. The attacker role-plays an authorised researcher, **reads each Riley
+reply — including the tool calls / SQL Riley made — and adapts its next message**,
+pressing for the fake hospital data across N turns. Crucially, **every turn is scored
+by our own deterministic `defense.defend_response` gate**, so *"did Riley leak?"* is a
+rule, not a vibe — and each turn is logged with its `turn_id` for submission.
+
+```bash
+# Point a local metacon model at Riley and let it attack for 12 turns
+.venv/bin/python qwen_attacker.py --target openai/gpt-oss-120b --turns 12 --trials 1
+```
 
 This turns the exercise into **LLM-vs-LLM red-teaming**: a cheap, local attacker model
 probes Riley continuously, and the same gate that scores the run is the gate we ship as
@@ -139,6 +150,9 @@ model-free gate at the `query_db` boundary:
 # Live attacks (need a Nebius key in .env — see docs/ONBOARDING.md)
 .venv/bin/python table_dump_probe.py --probes discover_then_dump --trials 3
 .venv/bin/python contact_takeover_probe.py --trials 3
+
+# Autonomous LLM-vs-LLM red-team (local metacon attacker — needs the metacon key)
+.venv/bin/python qwen_attacker.py --turns 12
 
 # The whole arc, live: attack → measure → fix → measure
 .venv/bin/python e2e_demo.py --trials 3
