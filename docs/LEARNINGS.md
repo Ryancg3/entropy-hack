@@ -2,7 +2,7 @@
 
 What we've tried against Riley and what we found. Newest entries at the top. Failed attempts count too: they save teammates from repeating a dead end.
 
-> **Start here:** [vulnerabilities.md](vulnerabilities.md) is the consolidated, reproducible write-up of the three confirmed findings (bulk dump, clinical/PHI inference, contact-takeover) and the one deterministic gate that stops them. This file is the raw running log behind it.
+> **Start here:** [vulnerabilities.md](vulnerabilities.md) is the consolidated, reproducible write-up of the three confirmed findings (bulk dump, clinical/PHI inference, contact-takeover) and the one deterministic gate that stops them. This file is the raw running log behind it. A complete, all-fields worked dump (every joined table) is in [example-full-data-dump.md](example-full-data-dump.md).
 
 Rules for entries:
 
