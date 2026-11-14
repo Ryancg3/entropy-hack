@@ -102,27 +102,46 @@ reaches the caller through two channels the filter under-guards:
    a direct caller sees them. This is the side channel from
    [attack-surface.md](attack-surface.md).
 
-## Suggested approach — deterministic fix
+## The fix — deterministic patch (built + measured)
 
-Patch the **`query_db` tool boundary**, not the model (deterministic, rule-based,
-no second LLM — exactly what the judging asks for). In order of impact:
+Patch the **`query_db` tool boundary**, not the model (rule-based, no second LLM —
+exactly what the judging asks for). Implemented in [`defense.py`](../defense.py),
+built on PR #7's [`field_safety.py`](../field_safety.py). Two enforcement points:
 
-1. **Cap and scope reads at the tool.** Reject any `query_db` call that is an
-   unscoped bulk read: deny `SELECT *`, deny queries with no patient/row
-   predicate, and hard-cap returned rows (e.g. `LIMIT ≤ 5`) server-side. A
-   front-desk assistant never needs 25 patients at once; this kills the dump
-   without touching legitimate single-patient lookups.
-2. **Deny schema/catalog introspection.** Block `information_schema`,
-   `sqlite_master`, `list tables`, `PRAGMA`, etc. Removes the `discover` half of
-   the winning two-step chain and the schema-enumeration recon.
-3. **Run the output filter over tool-call args and tool results too**, not just
-   `reply` — close the side channel. Same filter, three surfaces.
-4. **Column allow-list / deny-list at the tool.** Never return `ssn`,
-   `account_number`, card or routing columns regardless of the query.
+1. **SQL gate (`gate_sql`), pre-execution.** Rejects the shapes the attack used:
+   - `SELECT *` (over-broad, implicitly returns sensitive columns);
+   - schema/catalogue introspection (`information_schema`, `sqlite_master`,
+     `PRAGMA`) — kills the *discover* half of the winning two-step chain;
+   - injection / writes / DDL / `UNION` / tautologies (via `field_safety.audit_sql`);
+   - **the core rule:** any read returning PII/PHI columns from a person-level
+     table must be scoped to a single subject — a unique-id equality predicate
+     (`WHERE mrn=…`/`patient_id=…`) **or** `LIMIT 1`. A front desk looks up one
+     patient at a time; `… FROM patients LIMIT 25` is never legitimate. Reads that
+     touch only reference tables (facilities, departments, payers, insurance
+     plans) are exempt, so public directory info still works.
+2. **Output backstop (`redact_text`), post-execution.** Re-scans `reply` **and**
+   every tool-call argument/result for sensitive *values* (email, phone, MRN, SSN,
+   DOB) and redacts them — closing the tool-call side channel the reply filter
+   never saw, and catching any rows that reach the text another way.
 
-Measure before/after with the same harness: re-run `table_dump_probe.py --trials 3`
-after the patch and show confirmed row-dumps drop from 17 → 0 while a benign
-single-patient lookup still succeeds. That before/after number is the deliverable.
+### Measured result — before vs after
+
+Replaying the 120-call attack corpus through the patch
+([`evaluate_defense.py`](../evaluate_defense.py)):
+
+| | bulk-PII leaks | rate |
+| --- | --- | --- |
+| **Before patch** | **17 / 120** | 14% |
+| **After patch** | **0 / 120** | 0% |
+
+- SQL gate blocked **17/17** of the dump-producing queries.
+- All seven observed attack SQL shapes are rejected; **0 false positives** on a
+  benign fixture set (single-patient lookup by MRN / id, one-appointment lookup,
+  `COUNT(*)` aggregate, public facility info).
+
+Reproduce: `.venv/bin/python evaluate_defense.py`. Re-validate on fresh live
+traffic any time with `table_dump_probe.py --trials 3` piped through
+`defense.defend_response`. The 17 → 0 with zero benign breakage is the deliverable.
 
 ## Reproduce
 
