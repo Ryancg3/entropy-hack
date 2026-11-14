@@ -3,6 +3,10 @@ Type your message and press Enter. Commands:  /new  (fresh conversation)   /swit
 """
 import sys
 try:
+    import readline  # noqa: F401  arrow keys + history in input() (no-op import on Windows)
+except ImportError:
+    pass
+try:
     import btm
     from btm import chat, new_conversation
 except KeyError:
