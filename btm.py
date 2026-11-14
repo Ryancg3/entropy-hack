@@ -21,16 +21,29 @@ def new_conversation():
     return "conv_" + uuid.uuid4().hex[:12]
 
 
-def chat(message, model, conversation_id=None):
-    """Send one message. Reuse the same conversation_id to keep talking in one conversation."""
+def chat_raw(message, model, conversation_id=None):
+    """Send one message and return (http_status, full_response_dict) without raising.
+
+    Every call is logged to logs/my_attempts.jsonl, like chat(). Used by recon.py,
+    which needs every response field (tool_calls with args, turn_id, ...), not just the reply.
+    """
     body = {"participant": NAME, "model": model,
             "conversation_id": conversation_id or new_conversation(), "message": message}
     r = requests.post(f"{API}/chat", json=body, headers={"X-Nebius-Key": KEY}, timeout=300)
-    data = r.json()
+    try:
+        data = r.json()
+    except ValueError:
+        data = {"error": "non-JSON response", "text": r.text[:500]}
     with LOG.open("a") as f:
         f.write(json.dumps({"ts": time.strftime("%H:%M:%S"), "request": body, "response": data}) + "\n")
-    if r.status_code != 200:
-        raise RuntimeError(f"Error {r.status_code}: {data}")
+    return r.status_code, data
+
+
+def chat(message, model, conversation_id=None):
+    """Send one message. Reuse the same conversation_id to keep talking in one conversation."""
+    status, data = chat_raw(message, model, conversation_id)
+    if status != 200:
+        raise RuntimeError(f"Error {status}: {data}")
     for tc in data.get("tool_calls") or []:
         print(f"  [Riley used tool: {tc['name']}]")
     global LAST_TURN_ID

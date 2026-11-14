@@ -16,14 +16,33 @@ Sources: the [event slide deck](https://docs.google.com/presentation/d/14VG49wbl
 
 ## Target models
 
-| Model | Availability |
-| --- | --- |
-| Gemma 3 27B | Now |
-| DeepSeek V4 Pro | Now |
-| Claude Haiku 5.5 | Later, only through Entropy's org ID |
-| Claude Sonnet 5.5 | Later, only through Entropy's org ID |
+The deck names four target models, colour-coded by difficulty from green (easiest) to red (hardest):
 
-The deck colour-codes these by difficulty. The colours did not survive text extraction, so the order above (which looks like easiest to hardest) is an assumption. Each participant gets $100 of Nebius credits; the models are reached through Nebius Token Factory.
+| Model | Deck colour | Availability | Server model id |
+| --- | --- | --- | --- |
+| Gemma 3 27B | green | Now | **not served** on 2026-11-14 |
+| DeepSeek V4 Pro | yellow | Now | `deepseek-ai/DeepSeek-V4-Pro-0813` |
+| Claude Haiku 5.5 | orange | Later, only through Entropy's org ID | not served yet |
+| Claude Sonnet 5.5 | red | Later, only through Entropy's org ID | not served yet |
+
+These are the models to report results on. Right now only DeepSeek V4 Pro (option 4 in `chat.py`) can be used. Check `/models` again before assuming Gemma is still missing. The other models below aren't in the deck, but they're good for trying ideas cheaply.
+
+The server's `GET /models` lists what is live. On 2026-11-14 it returned:
+
+| Model id | Provider | Tier |
+| --- | --- | --- |
+| `Qwen/Qwen3-30B-A3B-Instruct-2507` | Nebius | small (easiest) |
+| `openai/gpt-oss-120b` | Nebius | medium |
+| `Qwen/Qwen3-235B-A22B-Instruct-2507` | Nebius | large |
+| `deepseek-ai/DeepSeek-V4-Pro-0813` | Nebius | very large (hardest) |
+| `groq/llama-3.1-8b-instant` | Groq | small |
+| `groq/qwen/qwen3.8-27b` | Groq | medium |
+| `groq/llama-3.3-70b-versatile` | Groq | large |
+| `groq/openai/gpt-oss-120b` | Groq | large |
+
+`chat.py` offers only the four Nebius models.
+
+Each participant gets $100 of Nebius credits; the models are reached through Nebius Token Factory.
 
 ## Ground rules
 
@@ -78,5 +97,8 @@ Claude Code has project skills for this in `.claude/skills/`: `onboard-teammate`
 
 ## Repo state and conventions
 
-- The starter kit is merged in: `btm.py` (client), `chat.py` (interactive chat), `example_attack.py`, `setup.py`. `check_connection.py` tests a Nebius key with no packages installed. New teammates start at [docs/ONBOARDING.md](docs/ONBOARDING.md). Update this section as code lands.
+- The starter kit is merged in: `btm.py` (client), `chat.py` (interactive chat), `example_attack.py`, `setup.py`. `check_connection.py` tests a Nebius key with no packages installed. New teammates start at [docs/ONBOARDING.md](docs/ONBOARDING.md).
+- **Recon:** `recon.py` sends benign probes to map Riley's attack surface and measures results (see [docs/recon.md](docs/recon.md)). Findings live in [docs/attack-surface.md](docs/attack-surface.md). `btm.chat_raw()` returns the full `(status, response)` for tooling; `chat()` is unchanged.
+- **Tests:** `tests/test_recon.py`, run with `.venv/bin/python -m pytest` (offline, mocked). Live smoke: `RUN_LIVE=1 .venv/bin/python -m pytest -m live`.
+- Update this section as code lands.
 - **Never commit secrets.** Nebius API keys, Entropy's org ID and event credentials (the venue WiFi password in the deck included) stay out of the repo. Read keys from environment variables or an untracked file.
