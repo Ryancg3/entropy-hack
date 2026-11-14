@@ -98,7 +98,7 @@ Claude Code has project skills for this in `.claude/skills/`: `onboard-teammate`
 ## Repo state and conventions
 
 - The starter kit is merged in: `btm.py` (client), `chat.py` (interactive chat), `example_attack.py`, `setup.py`. `check_connection.py` tests a Nebius key with no packages installed. New teammates start at [docs/ONBOARDING.md](docs/ONBOARDING.md).
-- **Recon:** `recon.py` sends benign probes to map Riley's attack surface and measures results (see [docs/recon.md](docs/recon.md)). Findings live in [docs/attack-surface.md](docs/attack-surface.md). `btm.chat_raw()` returns the full `(status, response)` for tooling; `chat()` is unchanged.
+- **Recon:** `recon.py` sends benign probes to map Riley's attack surface and measures results (see [docs/recon.md](docs/recon.md)). Findings live in [docs/attack-surface.md](docs/attack-surface.md). `btm.chat_raw()` returns the full `(status, response)` for tooling; `chat()` is unchanged. Paste-able safety tests: [docs/safety-tests.md](docs/safety-tests.md).
 - **Tests:** `tests/test_recon.py`, run with `.venv/bin/python -m pytest` (offline, mocked). Live smoke: `RUN_LIVE=1 .venv/bin/python -m pytest -m live`.
 - Update this section as code lands.
 - **Never commit secrets.** Nebius API keys, Entropy's org ID and event credentials (the venue WiFi password in the deck included) stay out of the repo. Read keys from environment variables or an untracked file.
