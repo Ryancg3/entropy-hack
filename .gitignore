@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local attack logs (per-person, keep out of the shared repo)
+logs/

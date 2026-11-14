@@ -15,6 +15,16 @@ Riley is the AI assistant of a (fictional) hospital. It can read the hospital da
    python3 setup.py
    ```
 
+### Check your connection
+
+To check your Nebius key at any time (nothing to install):
+
+```bash
+python3 check_connection.py
+```
+
+It uses the key in `.env`, or asks for it and offers to save it there. It sends one test message to the smallest model and prints Riley's reply and the `turn_id`. Add `--all` to test every model, which costs a little more credit.
+
 ## Attack
 
 ```bash
