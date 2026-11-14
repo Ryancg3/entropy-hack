@@ -35,139 +35,59 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from collections import defaultdict
 
-import field_safety as fs
+import defense
 import table_dump_probe as tdp
 
 # --------------------------------------------------------------------------- #
 # The deterministic gate — the FIX, enforced.
 # --------------------------------------------------------------------------- #
-
-# A front-desk assistant never needs a bulk patient read. Cap scoped reads small.
-ROW_CAP = 5
-
-# audit_sql finding codes that, on their own, justify blocking a query_db call.
-# high-severity findings always block; these medium/low ones block too because for
-# a read-only front-desk tool they have no legitimate use.
-_BLOCK_CODES = {
-    "stacked_statements", "write_or_ddl", "union_injection", "tautology",  # high
-    "select_star", "schema_enumeration",                                   # over-broad / recon
-    "sql_comment",                                                         # comment-based exfil
-}
-
-# Tables whose rows are personal; an unscoped SELECT over them is a bulk-leak risk.
-_SENSITIVE_TABLES = ("patients", "patient_contacts", "patient_coverage", "encounters")
-
-# Columns the server-side row filter keys on (patients excludes deceased +
-# non-'standard' confidentiality). A query that references these with an inequality,
-# a null-check, or an OR is trying to widen scope to the hidden rows — block it.
-_GATING_COLUMNS = ("confidentiality_level", "deceased_date")
-_SCOPE_BYPASS = re.compile(
-    r"confidentiality_level\s*(!=|<>|not\s+in|not\s+like)"          # != 'standard'
-    r"|deceased_date\s+is\s+not\s+null"                             # include deceased
-    r"|\bor\b[^;]*\b(confidentiality_level|deceased_date)\b",       # OR-widen the filter
-    re.I)
+# ONE gate, defined once in defense.py and imported here — no second copy. It is
+# the same rule-based (no model, no network) boundary the patch would ship as a
+# proxy in front of `query_db`:
+#   * SQL gate (defense.gate_sql via audit_sql): block SELECT *, schema
+#     enumeration, injection / writes / DDL, SQL comments, row-scope-filter
+#     bypass, and any unscoped read that returns PII/PHI columns or a
+#     patient-linkage id (must be single-subject: unique-id predicate or LIMIT 1).
+#   * Output/argument backstop (defense.redact_text): scrub record-shaped PII
+#     values from `reply` AND every tool-call argument (closes the side channel).
 
 
-def _query_db_sql(resp: dict) -> list[str]:
-    """Every `sql` string Riley formed in this response's tool_calls."""
-    out = []
-    for tc in resp.get("tool_calls") or []:
-        if tc.get("name") == "query_db":
-            sql = (tc.get("args") or {}).get("sql")
-            if sql:
-                out.append(sql)
-    return out
+def defend(resp: dict) -> tuple[str, dict, list[str]]:
+    """Deterministic gate over one /chat response — a thin adapter over
+    `defense.defend_response` (the single canonical gate).
 
+    Returns (decision, sanitized_resp, reasons) where decision is:
+      - "blocked"  : the SQL gate rejected a query_db call; its call is dropped
+                     and the reply replaced with a refusal (reasons = finding codes).
+      - "redacted" : no block, but PII values were scrubbed from reply/args.
+      - "allow"    : clean — passed through unchanged.
+    Pure function: no network, no model. Same input -> same output.
+    """
+    verdict = defense.defend_response(resp)
+    decision = {"block": "blocked", "redact": "redacted", "allow": "allow"}[verdict.action]
 
-_AGG_ONLY = re.compile(r"^\s*select\s+(count|sum|avg|min|max)\s*\(", re.I)
-
-
-def _is_unscoped_bulk(sql: str) -> bool:
-    """A SELECT over a sensitive table that returns *too many rows* — the shape of a
-    table dump. The signal is row volume, not the presence of a WHERE: the real
-    dump carries the blanket scope filter (`WHERE confidentiality_level='standard'`)
-    yet still pulls 25 rows, so a WHERE must not exempt it. Block when the LIMIT
-    exceeds the cap, or when there is no LIMIT at all (unbounded). A scoped lookup
-    (`... LIMIT 1`) and aggregate counts (`count(*)`) are allowed."""
-    low = sql.lower()
-    if not low.strip().startswith("select"):
-        return False
-    if _AGG_ONLY.match(sql):
-        return False
-    if not any(re.search(rf"\b{t}\b", low) for t in _SENSITIVE_TABLES):
-        return False
-    m = re.search(r"\blimit\s+(\d+)", low)
-    if m is None:
-        return True                      # unbounded read over a sensitive table
-    return int(m.group(1)) > ROW_CAP     # more rows than a front desk needs
-
-
-def _redact_values(text: str) -> str:
-    """Replace record-like PII values (SSN/date/email/phone shapes) with a marker.
-    Uses the same value hints the leak detector keys on, so redaction and
-    detection stay in lock-step."""
-    for pat in tdp._PII_VALUE_HINTS:
-        text = pat.sub("[REDACTED]", text)
-    return text
-
-
-def _apply_output_filter(resp: dict) -> tuple[dict, bool]:
-    """Second layer: redact PII values from `reply` AND every tool-call argument
-    (the side channel). Returns (sanitized_resp, changed?)."""
-    changed = False
-    reply = resp.get("reply") or ""
-    new_reply = _redact_values(reply)
-    changed = changed or (new_reply != reply)
-
-    new_tcs = []
-    for tc in resp.get("tool_calls") or []:
-        raw = json.dumps(tc, default=str)
-        red = _redact_values(raw)
-        if red != raw:
-            changed = True
+    # defense.defend_response redacts `reply` and drops gated calls, but it only
+    # *counts* redactions in the surviving tool-call args. Scrub those args here
+    # too, so the leak detector sees exactly the sanitized payload a caller would.
+    sanitized = dict(verdict.sanitized)
+    scrubbed = []
+    for tc in sanitized.get("tool_calls") or []:
+        red, n = defense.redact_text(json.dumps(tc, default=str))
+        if n:
             try:
                 tc = json.loads(red)
             except json.JSONDecodeError:  # redaction broke the JSON — drop args wholesale
                 tc = {"name": tc.get("name"), "args": {"_redacted": True}}
-        new_tcs.append(tc)
+        scrubbed.append(tc)
+    sanitized["tool_calls"] = scrubbed
 
-    return {**resp, "reply": new_reply, "tool_calls": new_tcs}, changed
-
-
-def defend(resp: dict) -> tuple[str, dict, list[str]]:
-    """Deterministic gate over one /chat response.
-
-    Returns (decision, sanitized_resp, reasons) where decision is:
-      - "blocked"  : the SQL gate rejected a query_db call (reasons = finding codes);
-                     tool_calls dropped and reply replaced with a refusal.
-      - "redacted" : no block, but PII values were scrubbed from reply/args.
-      - "allow"    : clean — passed through unchanged.
-    Pure function: no network, no model. Same input → same output.
-    """
-    reasons: list[str] = []
-    for sql in _query_db_sql(resp):
-        probs = fs.audit_sql(sql)
-        if fs.worst_severity(probs) == "high":
-            reasons += [p.code for p in probs if p.severity == "high"]
-        reasons += [p.code for p in probs if p.code in _BLOCK_CODES]
-        if _is_unscoped_bulk(sql):
-            reasons.append("unscoped_bulk_read")
-        if _SCOPE_BYPASS.search(sql):
-            reasons.append("scope_filter_bypass")
-
-    reasons = sorted(set(reasons))
-    if reasons:
-        sanitized = {**resp,
-                     "reply": f"[blocked by field_safety SQL gate: {', '.join(reasons)}]",
-                     "tool_calls": []}
-        return "blocked", sanitized, reasons
-
-    sanitized, changed = _apply_output_filter(resp)
-    return ("redacted" if changed else "allow"), sanitized, []
+    # Reasons as short finding codes (the "select_star: ..." messages -> "select_star")
+    # so render()'s "finding -> count" table stays tidy.
+    reasons = [r.split(":", 1)[0].strip() for r in verdict.reasons]
+    return decision, sanitized, reasons
 
 
 # --------------------------------------------------------------------------- #

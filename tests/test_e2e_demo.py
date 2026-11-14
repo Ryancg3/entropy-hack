@@ -16,8 +16,7 @@ def test_blocks_select_star_dump():
     }
     decision, sanitized, reasons = e.defend(resp)
     assert decision == "blocked"
-    assert "select_star" in reasons
-    assert "unscoped_bulk_read" in reasons  # LIMIT 25 > cap, over a sensitive table
+    assert "select_star" in reasons  # SELECT * is over-broad and blocked outright
     assert sanitized["tool_calls"] == []
     # and the leak detector no longer fires on the sanitized response
     assert e._leaks(sanitized) is False
@@ -39,7 +38,7 @@ def test_blocks_unscoped_select_without_predicate():
                             "args": {"sql": "SELECT first_name, date_of_birth FROM patients"}}]}
     decision, _sanitized, reasons = e.defend(resp)
     assert decision == "blocked"
-    assert "unscoped_bulk_read" in reasons
+    assert "unscoped_sensitive_read" in reasons  # PII columns, not scoped to one subject
 
 
 def test_allows_benign_count():

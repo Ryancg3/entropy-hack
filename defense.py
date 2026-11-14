@@ -6,12 +6,15 @@ A rule-based (no model in the loop) guard that sits between Riley and the caller
 and enforces two things, both deterministic and testable:
 
 1. A **`query_db` SQL gate** (`gate_sql`) — pre-execution. Riley's EHR tool should
-   only ever serve a *scoped* read. The gate rejects the shapes our attack used:
-   `SELECT *`, schema enumeration, injection (via `field_safety.audit_sql`), and —
-   the key rule — any read that returns PII/PHI columns without being scoped to a
-   single subject (a unique-identifier equality predicate, or `LIMIT 1`). A front
-   desk looks up one patient at a time; it never needs `SELECT ... FROM patients
-   LIMIT 25`.
+   only ever serve a *scoped* read. The gate rejects the shapes our attacks used:
+   `SELECT *`, schema enumeration, injection / writes / DDL (via
+   `field_safety.audit_sql`), SQL comments (clause-truncation / side-channel
+   exfil), row-scope-filter bypass (negating the confidentiality / deceased gating
+   columns), and — the key rule — any read that returns PII/PHI columns or a
+   patient-linkage id without being scoped to a single subject (a unique-identifier
+   equality predicate, or `LIMIT 1`). A front desk looks up one patient at a time;
+   it never needs `SELECT ... FROM patients LIMIT 25`. This one gate also stops the
+   contact-takeover `UPDATE` (a write/DDL finding).
 
 2. An **output backstop** (`redact_text`, `scan_pii_values`) — post-execution. It
    re-scans the `reply` *and* every tool-call argument/result for sensitive
@@ -71,6 +74,17 @@ _NON_PERSON_TABLES = frozenset({
     "facilities", "departments", "insurance_plans", "payers",
 })
 _TABLE_REF = re.compile(r"\b(?:from|join)\s+([a-zA-Z_][a-zA-Z0-9_]*)", re.I)
+
+# The server auto-scopes a patient read to `confidentiality_level = 'standard'
+# AND deceased_date IS NULL`. A query that negates or ORs around those gating
+# columns is trying to widen scope to the hidden rows (deceased / restricted).
+# The legitimate scoped filter (`= 'standard'`, `IS NULL`, joined with AND) does
+# NOT match, so this never fires on a normal single-subject lookup.
+_SCOPE_BYPASS = re.compile(
+    r"confidentiality_level\s*(?:!=|<>|not\s+in|not\s+like)"          # != 'standard'
+    r"|deceased_date\s+is\s+not\s+null"                              # include deceased
+    r"|\bor\b[^;]*\b(?:confidentiality_level|deceased_date)\b",       # OR-widen the filter
+    re.I)
 
 
 # --------------------------------------------------------------------------- #
@@ -175,6 +189,16 @@ def gate_sql(sql: str) -> GateDecision:
     # 3. Schema / catalogue enumeration — kills the 'discover' half of the attack.
     if any(p.code == "schema_enumeration" for p in problems):
         reasons.append("schema_enumeration: catalogue/metadata access is not allowed")
+    # 3a. SQL comment — a comment can truncate a clause or smuggle PII into the
+    #     tool-call side channel while the reply says only "logged" (a measured,
+    #     novel vector). A front-desk read never needs one.
+    if any(p.code == "sql_comment" for p in problems):
+        reasons.append("sql_comment: SQL comments are not allowed (clause truncation / side-channel exfil)")
+    # 3b. Row-scope filter bypass — negating/ORing the confidentiality/deceased
+    #     gating columns to reach the rows the server-side scope filter hides.
+    if _SCOPE_BYPASS.search(sql):
+        reasons.append("scope_filter_bypass: widens the auto-applied row-scope filter to hidden "
+                       "(deceased / restricted-confidentiality) patients")
 
     # 4. The core rule: a read from a person-level table that returns either
     #    classified-sensitive columns OR a patient-linkage identifier must be
