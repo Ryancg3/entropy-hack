@@ -107,6 +107,12 @@ Paste-able tests for every vector below: [safety-tests.md](safety-tests.md).
 5. **Multi-turn state.** Statefulness is confirmed; split an attack so no single
    message looks malicious.
 
+**Chained path (measured):** vectors 1, 2 and 5 combine into the
+**contact-takeover** kill chain — enumerate schema → dump the patient contact
+list → target one patient → `UPDATE` their email (portal/password-reset
+takeover). Reads confirmed 3/3 on all four models; two models fire the write.
+Full write-up and fix: [attack-path-contact-takeover.md](attack-path-contact-takeover.md).
+
 ## Trying the probes by hand in `chat.py`
 
 The fastest way to *see a probe go into the model* is the interactive chat. Each
