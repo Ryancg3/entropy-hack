@@ -39,6 +39,12 @@ Riley has **data-protection filters** that check its answers and block private d
 
 Prefer coding? See `example_attack.py`.
 
+## Our tooling
+
+- **[docs/attack-surface.md](docs/attack-surface.md)** — what we know about Riley: its tools, the data, how the filter behaves, and which attack vectors to try. Read this first.
+- **`recon.py`** — sends benign probes to map that surface and measures results. See **[docs/recon.md](docs/recon.md)**.
+- Tests: `.venv/bin/python -m pytest` (offline). Live smoke: `RUN_LIVE=1 .venv/bin/python -m pytest -m live`.
+
 ## Rules
 
 - Attack only through messages. No hacking the server.

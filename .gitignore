@@ -225,3 +225,6 @@ logs/
 # Claude Code: personal settings and worktrees stay local (skills in .claude/skills are shared)
 .claude/settings.local.json
 .claude/worktrees/
+
+# Recon harness output (per-person, may contain fake patient data)
+recon/
