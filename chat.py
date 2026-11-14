@@ -31,14 +31,17 @@ def choose():
     for i, (m, size) in enumerate(models, 1):
         print(f"  {i}. {m}  ({size})")
     while True:
-        model = models[pick("Pick a model", len(models), 1) - 1][0]
-        if not btm.is_claude(model) or btm.ANTHROPIC_KEY:
-            break
-        key = getpass.getpass(f"{model} needs an Anthropic API key (hidden; Enter to pick another model): ").strip()
-        if key:
+        model, size = models[pick("Pick a model", len(models), 1) - 1]
+        if btm.is_claude(model) and not btm.ANTHROPIC_KEY:
+            key = getpass.getpass(f"{model} needs an Anthropic API key (hidden; Enter to pick another model): ").strip()
+            if not key:
+                continue
             btm.set_anthropic_key(key)
             print("Saved Anthropic key to .env.")
-            break
+        if "not served yet" in size:
+            print(f"  {model} isn't on the Riley server yet (the organisers enable Claude later). Pick another model.")
+            continue
+        break
     print(f"\n--- New conversation with {model}. Type /new, /switch or /quit any time. ---\n")
     return model, new_conversation()
 
