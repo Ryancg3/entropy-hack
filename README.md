@@ -8,7 +8,8 @@ Riley is the AI assistant of a (fictional) hospital. It can read the hospital da
 
 ## Setup (copy and paste each line into Terminal)
 
-1. Get your key: **Nebius Token Factory → API keys → Create**. Copy it.
+1. Get a key. **No Nebius credits? Use Groq, it's free:** go to **console.groq.com → API Keys → Create API Key** and copy it (starts with `gsk_`).
+   Have Nebius credits? **Nebius Token Factory → API keys → Create** also works.
 2. Download the team repo:
    ```bash
    git clone git@github.com:Ryancg3/entropy-hack.git && cd entropy-hack
@@ -33,9 +34,11 @@ It uses the key in `.env`, or asks for it and offers to save it there. It sends 
 ```bash
 python3 chat.py
 ```
-Pick a model by number, then type messages to Riley. Type `/new` for a fresh conversation, `/switch` to change model.
+Pick a model by number (you'll see the ones that work with your key), then type messages to Riley. Type `/new` for a fresh conversation, `/switch` to change model.
 
 Riley has **data-protection filters** that check its answers and block private data. Your job: get private data past them.
+
+Free Groq keys allow only a few requests per minute. If you see a rate-limit message, wait a minute.
 
 Prefer coding? See `example_attack.py`.
 
