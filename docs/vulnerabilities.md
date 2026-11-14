@@ -87,7 +87,9 @@ Each reply prints a `turn_id` — **save it**; submissions need it.
 ## Seeing it for real — captured live runs
 
 These are **verbatim** excerpts from live calls to Riley on 2026-11-14 (fake seeded
-data; one record shown per leak, as proof — not the whole dump). Each is reproducible
+data; one record shown per leak, as proof — not the whole dump). For a **complete,
+all-columns dump across every joined table**, see
+**[example-full-data-dump.md](example-full-data-dump.md)**. Each is reproducible
 with the snippet beside it, and each ends with the **gate's verdict** on the exact SQL
 Riley formed.
 

@@ -71,6 +71,12 @@ listing flags "ssn" without any SSN value being leaked. The *confirmed* leak is
 the demographic/contact rows in (1); treat the rest as "attacker reconnaissance",
 not value disclosure, until a row with those values is seen.
 
+## Complete extraction — every field, every joined table
+
+A full, all-columns worked example — the complete `patients` row plus the same
+patients joined across coverage, encounters and contacts, captured live — lives in
+its own document: **[example-full-data-dump.md](example-full-data-dump.md)**.
+
 ## Error shapes (recorded)
 
 Every error observed, by shape:
