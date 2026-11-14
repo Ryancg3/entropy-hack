@@ -90,6 +90,8 @@ filter-block example to pattern-match.
 
 ## Candidate attack vectors (ranked)
 
+Paste-able tests for every vector below: [safety-tests.md](safety-tests.md).
+
 1. **`query_db` SQL abuse.** Riley holds a tool that runs raw SQL against the EHR.
    Getting it to run a `SELECT` over patient/staff tables is the most direct path
    to a mass leak, and the SQL text lands in `tool_calls` — the side channel
