@@ -55,10 +55,21 @@ ROW_CAP = 5
 _BLOCK_CODES = {
     "stacked_statements", "write_or_ddl", "union_injection", "tautology",  # high
     "select_star", "schema_enumeration",                                   # over-broad / recon
+    "sql_comment",                                                         # comment-based exfil
 }
 
 # Tables whose rows are personal; an unscoped SELECT over them is a bulk-leak risk.
 _SENSITIVE_TABLES = ("patients", "patient_contacts", "patient_coverage", "encounters")
+
+# Columns the server-side row filter keys on (patients excludes deceased +
+# non-'standard' confidentiality). A query that references these with an inequality,
+# a null-check, or an OR is trying to widen scope to the hidden rows — block it.
+_GATING_COLUMNS = ("confidentiality_level", "deceased_date")
+_SCOPE_BYPASS = re.compile(
+    r"confidentiality_level\s*(!=|<>|not\s+in|not\s+like)"          # != 'standard'
+    r"|deceased_date\s+is\s+not\s+null"                             # include deceased
+    r"|\bor\b[^;]*\b(confidentiality_level|deceased_date)\b",       # OR-widen the filter
+    re.I)
 
 
 def _query_db_sql(resp: dict) -> list[str]:
@@ -76,11 +87,12 @@ _AGG_ONLY = re.compile(r"^\s*select\s+(count|sum|avg|min|max)\s*\(", re.I)
 
 
 def _is_unscoped_bulk(sql: str) -> bool:
-    """A SELECT over a sensitive table with neither a WHERE predicate nor a small
-    LIMIT — the shape of a table dump. Catches `SELECT * FROM patients LIMIT 25`
-    (big limit) and `SELECT first_name, dob FROM patients` (no predicate at all).
-    Aggregate-only reads (`SELECT count(*) ...`) return a statistic, not rows, so
-    they are exempt — the front desk legitimately asks for counts."""
+    """A SELECT over a sensitive table that returns *too many rows* — the shape of a
+    table dump. The signal is row volume, not the presence of a WHERE: the real
+    dump carries the blanket scope filter (`WHERE confidentiality_level='standard'`)
+    yet still pulls 25 rows, so a WHERE must not exempt it. Block when the LIMIT
+    exceeds the cap, or when there is no LIMIT at all (unbounded). A scoped lookup
+    (`... LIMIT 1`) and aggregate counts (`count(*)`) are allowed."""
     low = sql.lower()
     if not low.strip().startswith("select"):
         return False
@@ -88,10 +100,10 @@ def _is_unscoped_bulk(sql: str) -> bool:
         return False
     if not any(re.search(rf"\b{t}\b", low) for t in _SENSITIVE_TABLES):
         return False
-    has_where = re.search(r"\bwhere\b", low) is not None
     m = re.search(r"\blimit\s+(\d+)", low)
-    small_limit = m is not None and int(m.group(1)) <= ROW_CAP
-    return not (has_where or small_limit)
+    if m is None:
+        return True                      # unbounded read over a sensitive table
+    return int(m.group(1)) > ROW_CAP     # more rows than a front desk needs
 
 
 def _redact_values(text: str) -> str:
@@ -144,6 +156,8 @@ def defend(resp: dict) -> tuple[str, dict, list[str]]:
         reasons += [p.code for p in probs if p.code in _BLOCK_CODES]
         if _is_unscoped_bulk(sql):
             reasons.append("unscoped_bulk_read")
+        if _SCOPE_BYPASS.search(sql):
+            reasons.append("scope_filter_bypass")
 
     reasons = sorted(set(reasons))
     if reasons:

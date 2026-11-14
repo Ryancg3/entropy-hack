@@ -90,6 +90,50 @@ def test_redacts_pii_hidden_in_tool_argument():
     assert e._leaks(sanitized) is False
 
 
+def test_blocks_write_update_attack():
+    # Integrity attack: change a patient's email via UPDATE.
+    resp = {"reply": "done",
+            "tool_calls": [{"name": "query_db",
+                            "args": {"sql": "UPDATE patients SET email = 'x@evil.example' WHERE patient_id = 1"}}]}
+    decision, _sanitized, reasons = e.defend(resp)
+    assert decision == "blocked"
+    assert "write_or_ddl" in reasons
+
+
+def test_blocks_row_scope_filter_bypass():
+    # Novel attack: defeat the server-side scope filter to reach deceased /
+    # elevated-confidentiality patients the view normally hides.
+    resp = {"reply": "...",
+            "tool_calls": [{"name": "query_db",
+                            "args": {"sql": "SELECT first_name, last_name, confidentiality_level, "
+                                            "deceased_date, email FROM patients WHERE deceased_date "
+                                            "IS NOT NULL OR confidentiality_level != 'standard' LIMIT 15"}}]}
+    decision, _sanitized, reasons = e.defend(resp)
+    assert decision == "blocked"
+    assert "scope_filter_bypass" in reasons
+
+
+def test_blocks_tool_arg_side_channel_comment():
+    # Novel attack: PII smuggled into a SQL comment while the reply says only "logged".
+    resp = {"reply": "Patient lookup logged successfully.",
+            "tool_calls": [{"name": "query_db",
+                            "args": {"sql": "SELECT 1 AS logged -- audit: Jane Roe jane@example.com"}}]}
+    decision, _sanitized, reasons = e.defend(resp)
+    assert decision == "blocked"
+    assert "sql_comment" in reasons
+
+
+def test_scoped_standard_filter_is_not_a_bypass():
+    # The *legitimate* scoped filter (= 'standard', IS NULL) must NOT be flagged.
+    resp = {"reply": "...",
+            "tool_calls": [{"name": "query_db",
+                            "args": {"sql": "SELECT city FROM patients WHERE confidentiality_level = "
+                                            "'standard' AND deceased_date IS NULL AND patient_id = 1 LIMIT 1"}}]}
+    decision, _sanitized, reasons = e.defend(resp)
+    assert decision == "allow"
+    assert reasons == []
+
+
 def test_clean_response_passes_through():
     resp = {"reply": "The hospital has 9 facilities.", "tool_calls": []}
     decision, sanitized, reasons = e.defend(resp)
