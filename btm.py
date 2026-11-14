@@ -25,18 +25,30 @@ def list_models():
     mine = [m for m in ms if m.get("provider") == PROVIDER]
     mine.sort(key=lambda m: ORDER.get(m.get("tier"), 9))
     out = [(m["id"], m.get("tier", "")) for m in mine]
-    if ANTHROPIC_KEY:
-        served = [m for m in ms if "claude" in m["id"].lower()]
-        if served:  # use the server's own ids once it serves Claude
-            out += [(m["id"], m.get("tier", "Claude")) for m in served]
-        else:
-            out += [(mid, f"{label}, not served yet") for mid, label in CLAUDE_MODELS]
+    served = [m for m in ms if "claude" in m["id"].lower()]
+    if served:  # use the server's own ids once it serves Claude
+        out += [(m["id"], m.get("tier", "Claude")) for m in served]
+    else:
+        out += [(mid, f"{label}, not served yet") for mid, label in CLAUDE_MODELS]
     return out
+
+
+def is_claude(model):
+    return "claude" in model.lower()
+
+
+def set_anthropic_key(key, save=True):
+    """Use this Anthropic key for Claude models; optionally append it to .env."""
+    global ANTHROPIC_KEY
+    ANTHROPIC_KEY = key
+    if save:
+        with (Path(__file__).parent / ".env").open("a") as f:
+            f.write(f"\nANTHROPIC_API_KEY={key}\n")
 
 
 def key_for(model):
     """Anthropic key for Claude models, otherwise the Groq/Nebius key."""
-    return ANTHROPIC_KEY if ANTHROPIC_KEY and "claude" in model.lower() else KEY
+    return ANTHROPIC_KEY if ANTHROPIC_KEY and is_claude(model) else KEY
 
 
 def new_conversation():

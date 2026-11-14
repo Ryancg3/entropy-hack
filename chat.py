@@ -1,7 +1,7 @@
 """Chat with Riley:  python3 chat.py
 Type your message and press Enter. Commands:  /new  (fresh conversation)   /switch  (change model)   /quit
 """
-import sys
+import getpass, sys
 try:
     import readline  # noqa: F401  arrow keys + history in input() (no-op import on Windows)
 except ImportError:
@@ -30,7 +30,15 @@ def choose():
     print("\nModels for your key (weakest first):")
     for i, (m, size) in enumerate(models, 1):
         print(f"  {i}. {m}  ({size})")
-    model = models[pick("Pick a model", len(models), 1) - 1][0]
+    while True:
+        model = models[pick("Pick a model", len(models), 1) - 1][0]
+        if not btm.is_claude(model) or btm.ANTHROPIC_KEY:
+            break
+        key = getpass.getpass(f"{model} needs an Anthropic API key (hidden; Enter to pick another model): ").strip()
+        if key:
+            btm.set_anthropic_key(key)
+            print("Saved Anthropic key to .env.")
+            break
     print(f"\n--- New conversation with {model}. Type /new, /switch or /quit any time. ---\n")
     return model, new_conversation()
 
