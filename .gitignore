@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local attack logs (per-person, keep out of the shared repo)
+logs/
+
+# Claude Code: personal settings and worktrees stay local (skills in .claude/skills are shared)
+.claude/settings.local.json
+.claude/worktrees/

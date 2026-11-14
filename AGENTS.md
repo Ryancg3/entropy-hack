@@ -66,7 +66,17 @@ The organisers' kit is at [natalienma/break-the-model-starter](https://github.co
 - `example_attack.py` shows how to attack from code.
 - Leaks are submitted through the form linked in that repo's README.
 
+## Documenting issues and learnings
+
+Write things down as you go, so teammates (and their agents) don't repeat work:
+
+- **Attack attempts, findings, success rates and fix ideas** go in [docs/LEARNINGS.md](docs/LEARNINGS.md), failures included.
+- **Setup, tooling and server problems** and their fixes go in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Check it before debugging setup.
+- Each file has a template at the top. Update an existing entry rather than adding a duplicate.
+
+Claude Code has project skills for this in `.claude/skills/`: `onboard-teammate` ("onboard me"), `log-learning` ("log this learning") and `log-issue` ("log this issue"). Other agents should follow the same steps by hand; the skill files explain them.
+
 ## Repo state and conventions
 
-- The repo is new: so far it holds only `README.md`, `.gitignore` and this file. Update this section as code lands.
+- The starter kit is merged in: `btm.py` (client), `chat.py` (interactive chat), `example_attack.py`, `setup.py`. `check_connection.py` tests a Nebius key with no packages installed. New teammates start at [docs/ONBOARDING.md](docs/ONBOARDING.md). Update this section as code lands.
 - **Never commit secrets.** Nebius API keys, Entropy's org ID and event credentials (the venue WiFi password in the deck included) stay out of the repo. Read keys from environment variables or an untracked file.
